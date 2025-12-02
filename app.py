@@ -56,7 +56,6 @@ col1, col2, col3 = st.columns(3)
 with col1:
     cliente = st.text_input("Cliente")
 with col2:
-    # KEY ÚNICO
     fecha = st.date_input("Fecha", value=date.today(), key="fecha_registro")
 with col3:
     valor = st.number_input("Valor de la deuda (COP)", min_value=0.0, format="%.0f")
@@ -82,10 +81,26 @@ if st.button("Guardar nuevo registro"):
 # ---------------------------------------------------------
 st.subheader("📋 Deudores activos")
 
+# 🔥 FILTRO DE CLIENTES (opcional)
+clientes_unicos = sorted(df["Cliente"].unique())
+cliente_filtro = st.selectbox("Filtrar por cliente", ["Todos"] + clientes_unicos, index=0)
+
 df_display = df.copy()
+
+if cliente_filtro != "Todos":
+    df_display = df_display[df_display["Cliente"] == cliente_filtro]
+
+# Orden alfabético
+df_display = df_display.sort_values("Cliente")
+
+# Formato COP
 df_display["Valor"] = df_display["Valor"].apply(lambda x: f"${x:,.0f}")
 
 st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+# 🔥 GRAN TOTAL GENERAL
+gran_total = df["Valor"].sum()
+st.subheader(f"💰 Gran total de todos los deudores: ${gran_total:,.0f}")
 
 # ---------------------------------------------------------
 # SECCIÓN 3: EDITAR REGISTRO
@@ -106,7 +121,6 @@ else:
     with col1:
         cliente_edit = st.text_input("Cliente", value=row["Cliente"])
     with col2:
-        # KEY ÚNICO (EVITA EL ERROR)
         fecha_edit = st.date_input("Fecha", value=row["Fecha"], key=f"fecha_edit_{seleccionado}")
     with col3:
         valor_edit = st.number_input(
@@ -124,10 +138,8 @@ else:
         df.at[idx, "Valor"] = valor_edit
         df.at[idx, "Pagado"] = pagado_edit
 
-        # Si está pagado → eliminar
-        df = df[df["Pagado"] != True]
+        df = df[df["Pagado"] != True]  # eliminar pagados
 
-        # Reindex consecutivos
         df = df.reset_index(drop=True)
         df["Consecutivo"] = df.index + 1
 
@@ -145,6 +157,7 @@ if len(df) == 0:
 else:
     totales = df.groupby("Cliente")["Valor"].sum().reset_index()
     totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
+    totales = totales.sort_values("Cliente")
     st.dataframe(totales, use_container_width=True)
 
 # ---------------------------------------------------------
