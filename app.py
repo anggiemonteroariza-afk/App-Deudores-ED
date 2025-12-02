@@ -40,13 +40,11 @@ df["Consecutivo"] = df.index + 1
 def save():
     df.to_excel(FILE_PATH, index=False)
 
-
 # ---------------------------------------------------------
 # TÍTULO
 # ---------------------------------------------------------
 st.title("💸 Mini App de Registro de Deudores")
 st.write("Todo en una sola pantalla para que sea más rápido y fácil.")
-
 
 # ---------------------------------------------------------
 # SECCIÓN 1: REGISTRAR NUEVO DEUDOR
@@ -58,7 +56,8 @@ col1, col2, col3 = st.columns(3)
 with col1:
     cliente = st.text_input("Cliente")
 with col2:
-    fecha = st.date_input("Fecha", value=date.today())
+    # KEY ÚNICO
+    fecha = st.date_input("Fecha", value=date.today(), key="fecha_registro")
 with col3:
     valor = st.number_input("Valor de la deuda (COP)", min_value=0.0, format="%.0f")
 
@@ -78,7 +77,6 @@ if st.button("Guardar nuevo registro"):
         st.success("Registro guardado exitosamente.")
         st.rerun()
 
-
 # ---------------------------------------------------------
 # SECCIÓN 2: DEUDORES ACTIVOS
 # ---------------------------------------------------------
@@ -88,7 +86,6 @@ df_display = df.copy()
 df_display["Valor"] = df_display["Valor"].apply(lambda x: f"${x:,.0f}")
 
 st.dataframe(df_display, use_container_width=True, hide_index=True)
-
 
 # ---------------------------------------------------------
 # SECCIÓN 3: EDITAR REGISTRO
@@ -109,9 +106,15 @@ else:
     with col1:
         cliente_edit = st.text_input("Cliente", value=row["Cliente"])
     with col2:
-        fecha_edit = st.date_input("Fecha", value=row["Fecha"])
+        # KEY ÚNICO (EVITA EL ERROR)
+        fecha_edit = st.date_input("Fecha", value=row["Fecha"], key=f"fecha_edit_{seleccionado}")
     with col3:
-        valor_edit = st.number_input("Valor (COP)", min_value=0.0, value=float(row["Valor"]), format="%.0f")
+        valor_edit = st.number_input(
+            "Valor (COP)", 
+            min_value=0.0, 
+            value=float(row["Valor"]), 
+            format="%.0f"
+        )
     with col4:
         pagado_edit = st.checkbox("Pagado", value=row["Pagado"])
 
@@ -132,7 +135,6 @@ else:
         st.success("Cambios guardados correctamente.")
         st.rerun()
 
-
 # ---------------------------------------------------------
 # SECCIÓN 4: TOTAL POR CLIENTE
 # ---------------------------------------------------------
@@ -143,17 +145,14 @@ if len(df) == 0:
 else:
     totales = df.groupby("Cliente")["Valor"].sum().reset_index()
     totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
-
     st.dataframe(totales, use_container_width=True)
-
 
 # ---------------------------------------------------------
 # SECCIÓN 5: DESCARGAR EXCEL
 # ---------------------------------------------------------
 st.subheader("⬇️ Descargar Excel actualizado")
 
-buffer = df.copy()
-buffer.to_excel("DeudoresPrueba.xlsx", index=False)
+df.to_excel("DeudoresPrueba.xlsx", index=False)
 
 with open("DeudoresPrueba.xlsx", "rb") as f:
     st.download_button(
