@@ -48,8 +48,7 @@ def save():
 # ---------------------------------------------------------
 # TÍTULO
 # ---------------------------------------------------------
-st.title("💸 Mini App de Registro de Deudores")
-st.write("Todo en una sola pantalla para que sea más rápido y fácil.")
+st.title("💸 App de Registro de Deudores")
 
 # ---------------------------------------------------------
 # SECCIÓN 1: REGISTRAR NUEVO DEUDOR
@@ -214,3 +213,4 @@ with open("DeudoresPrueba.xlsx", "rb") as f:
         file_name="DeudoresPrueba.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
