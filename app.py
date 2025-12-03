@@ -60,7 +60,8 @@ col1, col2, col3 = st.columns(3)
 with col1:
     cliente = st.text_input("Cliente")
 with col2:
-    fecha = st.date_input("Fecha", value=date.today())
+    # KEY ÚNICO PARA EVITAR DUPLICADOS
+    fecha = st.date_input("Fecha", value=date.today(), key="fecha_nuevo")
 with col3:
     valor = st.number_input("Valor de la deuda (COP)", min_value=0.0, format="%.0f")
 
@@ -122,7 +123,8 @@ else:
     with col1:
         cliente_edit = st.text_input("Cliente", value=row["Cliente"])
     with col2:
-        fecha_edit = st.date_input("Fecha", value=row["Fecha"])
+        # KEY ÚNICO USANDO EL CONSECUTIVO
+        fecha_edit = st.date_input("Fecha", value=row["Fecha"], key=f"fecha_edit_{seleccionado}")
     with col3:
         valor_edit = st.number_input("Valor (COP)", min_value=0.0, value=float(row["Valor"]), format="%.0f")
     with col4:
@@ -213,4 +215,3 @@ with open("DeudoresPrueba.xlsx", "rb") as f:
         file_name="DeudoresPrueba.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
