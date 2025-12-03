@@ -28,6 +28,9 @@ for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
 # Convertir fecha sin hora
 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
 
+# 🔥 NORMALIZAR NOMBRES PARA UNIR CLIENTES DUPLICADOS
+df["Cliente"] = df["Cliente"].astype(str).str.strip().str.upper()
+
 # Eliminar filas completamente vacías
 df = df.dropna(how="all")
 
@@ -62,7 +65,7 @@ with col2:
     fecha = st.date_input(
         "Fecha",
         value=date.today(),
-        max_value=date.today(),        # 👈 NO PERMITIR FECHAS FUTURAS
+        max_value=date.today(),
         key="fecha_nuevo"
     )
 with col3:
@@ -74,7 +77,7 @@ if st.button("Guardar nuevo registro"):
     else:
         new_row = {
             "Consecutivo": len(df) + 1,
-            "Cliente": cliente,
+            "Cliente": cliente.strip().upper(),   # 🟩 Normalizar también al guardar
             "Fecha": fecha,
             "Valor": valor,
             "Pagado": False
@@ -126,7 +129,7 @@ else:
         fecha_edit = st.date_input(
             "Fecha",
             value=row["Fecha"],
-            max_value=date.today(),               # 👈 TAMPOCO FUTURO
+            max_value=date.today(),
             key=f"fecha_edit_{seleccionado}"
         )
     with col3:
@@ -135,7 +138,7 @@ else:
         pagado_edit = st.checkbox("Pagado", value=row["Pagado"])
 
     if st.button("Guardar cambios"):
-        df.at[idx, "Cliente"] = cliente_edit
+        df.at[idx, "Cliente"] = cliente_edit.strip().upper()  # 🟩 Normalizado al editar
         df.at[idx, "Fecha"] = fecha_edit
         df.at[idx, "Valor"] = valor_edit
         df.at[idx, "Pagado"] = pagado_edit
@@ -166,7 +169,7 @@ if len(df) > 0:
     st.subheader(f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**")
 
 # ---------------------------------------------------------
-# SECCIÓN 6: DESCARGAR TOTAL POR CLIENTE COMO IMAGEN
+# SECCIÓN 6: IMAGEN TOTAL POR CLIENTE
 # ---------------------------------------------------------
 st.subheader("🖼️ Descargar imagen del total por cliente")
 
@@ -198,7 +201,7 @@ if len(df) > 0:
     )
 
 # ---------------------------------------------------------
-# SECCIÓN 7: DESCARGAR EXCEL ACTUALIZADO
+# SECCIÓN 7: DESCARGAR EXCEL
 # ---------------------------------------------------------
 st.subheader("⬇️ Descargar Excel actualizado")
 
