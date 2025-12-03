@@ -34,14 +34,13 @@ df = df.dropna(how="all")
 # Eliminar registros pagados
 df = df[df["Pagado"] != True]
 
-# Orden alfabético de clientes
+# Orden alfabético
 df = df.sort_values(by="Cliente", ascending=True, na_position='last')
 
 # Reset consecutivos
 df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
-# Función para guardar
 def save():
     df.to_excel(FILE_PATH, index=False)
 
@@ -60,8 +59,12 @@ col1, col2, col3 = st.columns(3)
 with col1:
     cliente = st.text_input("Cliente")
 with col2:
-    # KEY ÚNICO PARA EVITAR DUPLICADOS
-    fecha = st.date_input("Fecha", value=date.today(), key="fecha_nuevo")
+    fecha = st.date_input(
+        "Fecha",
+        value=date.today(),
+        max_value=date.today(),        # 👈 NO PERMITIR FECHAS FUTURAS
+        key="fecha_nuevo"
+    )
 with col3:
     valor = st.number_input("Valor de la deuda (COP)", min_value=0.0, format="%.0f")
 
@@ -89,20 +92,17 @@ st.subheader("🔎 Filtro por cliente")
 clientes_unicos = sorted(df["Cliente"].dropna().unique())
 filtro_cliente = st.selectbox("Selecciona un cliente (opcional)", ["Todos"] + list(clientes_unicos))
 
-if filtro_cliente != "Todos":
-    df_display = df[df["Cliente"] == filtro_cliente]
-else:
-    df_display = df.copy()
+df_display = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cliente]
 
 # ---------------------------------------------------------
 # SECCIÓN 3: DEUDORES ACTIVOS
 # ---------------------------------------------------------
 st.subheader("📋 Deudores activos")
 
-df_display_formateado = df_display.copy()
-df_display_formateado["Valor"] = df_display_formateado["Valor"].apply(lambda x: f"${x:,.0f}")
+df_disp = df_display.copy()
+df_disp["Valor"] = df_disp["Valor"].apply(lambda x: f"${x:,.0f}")
 
-st.dataframe(df_display_formateado, use_container_width=True, hide_index=True)
+st.dataframe(df_disp, use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------
 # SECCIÓN 4: EDITAR REGISTRO
@@ -123,8 +123,12 @@ else:
     with col1:
         cliente_edit = st.text_input("Cliente", value=row["Cliente"])
     with col2:
-        # KEY ÚNICO USANDO EL CONSECUTIVO
-        fecha_edit = st.date_input("Fecha", value=row["Fecha"], key=f"fecha_edit_{seleccionado}")
+        fecha_edit = st.date_input(
+            "Fecha",
+            value=row["Fecha"],
+            max_value=date.today(),               # 👈 TAMPOCO FUTURO
+            key=f"fecha_edit_{seleccionado}"
+        )
     with col3:
         valor_edit = st.number_input("Valor (COP)", min_value=0.0, value=float(row["Valor"]), format="%.0f")
     with col4:
@@ -136,13 +140,8 @@ else:
         df.at[idx, "Valor"] = valor_edit
         df.at[idx, "Pagado"] = pagado_edit
 
-        # Si se marcó como pagado → eliminar
         df = df[df["Pagado"] != True]
-
-        # Reordenar alfabéticamente
         df = df.sort_values(by="Cliente", ascending=True)
-
-        # Reindexar consecutivos
         df = df.reset_index(drop=True)
         df["Consecutivo"] = df.index + 1
 
@@ -160,10 +159,8 @@ if len(df) == 0:
 else:
     totales = df.groupby("Cliente")["Valor"].sum().reset_index()
     totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
-
     st.dataframe(totales, use_container_width=True)
 
-# Gran total
 if len(df) > 0:
     gran_total = df["Valor"].sum()
     st.subheader(f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**")
