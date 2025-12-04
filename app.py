@@ -78,7 +78,7 @@ with st.expander("➕ Registrar nuevo deudor", expanded=True):
         valor = st.number_input(
             "Valor (COP)",
             min_value=0.0,
-            step=1000.0,     # CORREGIDO
+            step=1000.0,
             format="%.0f"
         )
 
@@ -102,7 +102,7 @@ with st.expander("➕ Registrar nuevo deudor", expanded=True):
 
             save(df)
             st.success("Registro guardado exitosamente.")
-            st.rerun()   # CORREGIDO
+            st.rerun()
 
 
 # ---------------------------------------------------------
@@ -147,7 +147,7 @@ with st.expander("📋 Deudores activos (editar directamente aquí)", expanded=T
         df = edited_df.copy()
         save(df)
         st.success("Cambios guardados.")
-        st.rerun()   # CORREGIDO
+        st.rerun()
 
 
 # ---------------------------------------------------------
@@ -167,11 +167,16 @@ with st.expander("📊 Totales y descarga de imagen", expanded=False):
         gran_total = df["Valor"].sum()
         st.markdown(f"**💰 Gran total:** ${gran_total:,.0f}")
 
-        fig, ax = plt.subplots(figsize=(6, max(2, len(totales_raw)*0.5)))
+        # IMAGEN FORMATEADA
+        totales_img = totales_raw.copy()
+        totales_img["Valor"] = totales_img["Valor"].apply(lambda x: f"${x:,.0f}")
+
+        fig, ax = plt.subplots(figsize=(6, max(2, len(totales_img)*0.5)))
         ax.axis('off')
+
         tabla = ax.table(
-            cellText=totales_raw.values,
-            colLabels=totales_raw.columns,
+            cellText=totales_img.values,
+            colLabels=totales_img.columns,
             cellLoc='center',
             loc='center'
         )
