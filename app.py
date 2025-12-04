@@ -78,7 +78,7 @@ with st.expander("➕ Registrar nuevo deudor", expanded=True):
         valor = st.number_input(
             "Valor (COP)",
             min_value=0.0,
-            step=1000.0,     # 🔥 CORREGIDO
+            step=1000.0,     # CORREGIDO
             format="%.0f"
         )
 
@@ -102,7 +102,7 @@ with st.expander("➕ Registrar nuevo deudor", expanded=True):
 
             save(df)
             st.success("Registro guardado exitosamente.")
-            st.experimental_rerun()
+            st.rerun()   # CORREGIDO
 
 
 # ---------------------------------------------------------
@@ -147,7 +147,7 @@ with st.expander("📋 Deudores activos (editar directamente aquí)", expanded=T
         df = edited_df.copy()
         save(df)
         st.success("Cambios guardados.")
-        st.experimental_rerun()
+        st.rerun()   # CORREGIDO
 
 
 # ---------------------------------------------------------
