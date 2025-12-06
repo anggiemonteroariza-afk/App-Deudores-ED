@@ -54,13 +54,13 @@ df = df.dropna(how="all")
 df = df[df["Pagado"] != True]
 
 # Ordenar alfabéticamente
-df = df.sort_values(by="Cliente", ascending=True, na_position='last')
+df = df.sort_values(by="Cliente", ascending=True)
 
 # Reset consecutivo
 df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
-# Función para guardar
+# Guardar
 def save(data):
     data.to_excel(FILE_PATH, index=False)
 
@@ -125,16 +125,11 @@ filtro_cliente = st.selectbox(
 df_editable = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cliente]
 
 # ---------------------------------------------------------
-# SECCIÓN 3: TABLA EDITABLE
+# SECCIÓN 3: TABLA EDITABLE CON BOTÓN GUARDAR
 # ---------------------------------------------------------
 st.subheader("✏️ Editar directamente en la tabla")
 
-# Editable columns
-editable_cols = ["Cliente", "Fecha", "Valor", "Pagado"]
-
 df_temp = df_editable.copy()
-
-# Convert Fecha para editor
 df_temp["Fecha"] = pd.to_datetime(df_temp["Fecha"])
 
 edited = st.data_editor(
@@ -149,12 +144,12 @@ edited = st.data_editor(
     disabled=["Consecutivo"]
 )
 
-# Si hay cambios
-if edited is not None and not edited.equals(df_temp):
+# BOTÓN PARA GUARDAR CAMBIOS
+if st.button("💾 Guardar cambios de la tabla"):
     df_updated = df.copy()
 
-    # Actualizar solo los registros filtrados
-    for i, row in edited.iterrows():
+    # Actualizar solo registros visibles
+    for _, row in edited.iterrows():
         idx = df[df["Consecutivo"] == row["Consecutivo"]].index
         if len(idx) > 0:
             idx = idx[0]
@@ -166,13 +161,13 @@ if edited is not None and not edited.equals(df_temp):
     # Eliminar pagados
     df_updated = df_updated[df_updated["Pagado"] != True]
 
-    # Orden y consecutivo
+    # Reordenar
     df_updated = df_updated.sort_values(by="Cliente")
     df_updated = df_updated.reset_index(drop=True)
     df_updated["Consecutivo"] = df_updated.index + 1
 
     save(df_updated)
-    st.success("Cambios guardados.")
+    st.success("Cambios guardados correctamente.")
     st.rerun()
 
 # ---------------------------------------------------------
@@ -193,7 +188,7 @@ if len(df) > 0:
     st.subheader(f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**")
 
 # ---------------------------------------------------------
-# SECCIÓN 5: IMAGEN DEL TOTAL POR CLIENTE
+# SECCIÓN 5: IMAGEN
 # ---------------------------------------------------------
 st.subheader("🖼️ Descargar imagen del total por cliente")
 
