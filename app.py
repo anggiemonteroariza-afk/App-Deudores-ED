@@ -13,59 +13,51 @@ st.set_page_config(page_title="Mini App Deudores", page_icon="💸", layout="wid
 FILE_PATH = "DeudoresPrueba.xlsx"
 
 # ---------------------------------------------------------
-# FUNCIÓN PARA NORMALIZAR CLIENTE (Opción B)
-# Mantiene tildes y ñ, pero:
-# - Convierte a MAYÚSCULAS
-# - Quita espacios dobles
-# - Quita espacios al inicio/final
-# - Elimina caracteres invisibles
-# ---------------------------------------------------------
-def normalizar_cliente(nombre):
-    if pd.isna(nombre):
-        return ""
-    nombre = str(nombre)
-    nombre = nombre.replace("\u200b", "")   # quitar caracteres invisibles
-    nombre = " ".join(nombre.split())       # quitar espacios dobles
-    nombre = nombre.upper()                 # poner en MAYÚSCULAS
-    return nombre
-
-
-# ---------------------------------------------------------
-# CARGA DE BASE DE DATOS
+# CARGA Y LIMPIEZA DEL ARCHIVO
 # ---------------------------------------------------------
 if os.path.exists(FILE_PATH):
     df = pd.read_excel(FILE_PATH)
 else:
     df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
 
-# Asegurar estructura correcta
+# Asegurar columnas
 for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
     if col not in df.columns:
         df[col] = None
 
-# Normalizar nombre siempre
-df["Cliente"] = df["Cliente"].apply(normalizar_cliente)
+# Normalizar cliente: mayúsculas + quitar espacios
+df["Cliente"] = df["Cliente"].astype(str).str.strip().str.upper()
 
-# Convertir fecha sin hora
+# Convertir fecha
 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
 
-# Eliminar filas completamente vacías
+# Convertir valores
+df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce")
+
+# Normalizar Pagado
+def normalize_paid(x):
+    if str(x).upper() in ["1", "TRUE", "PAGADO", "SI", "SÍ", "YES"]:
+        return True
+    return False
+
+df["Pagado"] = df["Pagado"].apply(normalize_paid)
+
+# Eliminar filas vacías
 df = df.dropna(how="all")
 
-# Eliminar registros pagados
+# Eliminar pagados
 df = df[df["Pagado"] != True]
 
 # Orden alfabético
-df = df.sort_values(by="Cliente", ascending=True)
+df = df.sort_values(by="Cliente", ascending=True, na_position='last')
 
-# Reset consecutivos
+# Reset consecutivo
 df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
-
+# Guardar función
 def save():
     df.to_excel(FILE_PATH, index=False)
-
 
 # ---------------------------------------------------------
 # TÍTULO
@@ -80,39 +72,39 @@ st.subheader("➕ Registrar nuevo deudor")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    cliente = st.text_input("Cliente")
+    cliente = st.text_input("Cliente").strip().upper()
+
 with col2:
     fecha = st.date_input(
         "Fecha",
         value=date.today(),
         max_value=date.today(),
-        key="fecha_nueva"
+        key="fecha_nuevo"
     )
+
 with col3:
-    valor = st.number_input("Valor (COP)", min_value=0.0, format="%.0f", step=1000)
+    valor = st.number_input(
+        "Valor (COP)",
+        min_value=0.0,
+        format="%.0f",
+        step=1000.0
+    )
 
 if st.button("Guardar nuevo registro"):
-    if cliente.strip() == "":
+    if cliente == "":
         st.error("El nombre del cliente es obligatorio.")
     else:
         new_row = {
             "Consecutivo": len(df) + 1,
-            "Cliente": normalizar_cliente(cliente),
+            "Cliente": cliente,
             "Fecha": fecha,
-            "Valor": float(valor),
+            "Valor": valor,
             "Pagado": False
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
-        # Reordenar y actualizar consecutivos
-        df = df.sort_values(by="Cliente")
-        df = df.reset_index(drop=True)
-        df["Consecutivo"] = df.index + 1
-
         save()
         st.success("Registro guardado exitosamente.")
         st.rerun()
-
 
 # ---------------------------------------------------------
 # SECCIÓN 2: FILTRO DE CLIENTES
@@ -120,7 +112,10 @@ if st.button("Guardar nuevo registro"):
 st.subheader("🔎 Filtro por cliente")
 
 clientes_unicos = sorted(df["Cliente"].dropna().unique())
-filtro_cliente = st.selectbox("Selecciona un cliente (opcional)", ["Todos"] + list(clientes_unicos))
+filtro_cliente = st.selectbox(
+    "Selecciona un cliente (opcional)",
+    ["Todos"] + list(clientes_unicos)
+)
 
 df_display = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cliente]
 
@@ -130,12 +125,12 @@ df_display = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cli
 st.subheader("📋 Deudores activos")
 
 df_disp = df_display.copy()
-df_disp["Valor"] = df_disp["Valor"].apply(lambda x: f"${x:,.0f}")
+df_disp["Valor"] = df_disp["Valor"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
 
 st.dataframe(df_disp, use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------
-# SECCIÓN 4: EDITAR UN REGISTRO
+# SECCIÓN 4: EDITAR REGISTRO
 # ---------------------------------------------------------
 st.subheader("✏️ Editar un registro")
 
@@ -151,7 +146,8 @@ else:
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        cliente_edit = st.text_input("Cliente", value=row["Cliente"])
+        cliente_edit = st.text_input("Cliente", value=row["Cliente"]).strip().upper()
+
     with col2:
         fecha_edit = st.date_input(
             "Fecha",
@@ -159,22 +155,27 @@ else:
             max_value=date.today(),
             key=f"fecha_edit_{seleccionado}"
         )
+
     with col3:
-        valor_edit = st.number_input("Valor (COP)", min_value=0.0, value=float(row["Valor"]), format="%.0f", step=1000)
+        valor_edit = st.number_input(
+            "Valor (COP)",
+            min_value=0.0,
+            value=float(row["Valor"]),
+            format="%.0f",
+            step=1000.0
+        )
+
     with col4:
         pagado_edit = st.checkbox("Pagado", value=row["Pagado"])
 
     if st.button("Guardar cambios"):
-        df.at[idx, "Cliente"] = normalizar_cliente(cliente_edit)
+        df.at[idx, "Cliente"] = cliente_edit
         df.at[idx, "Fecha"] = fecha_edit
-        df.at[idx, "Valor"] = float(valor_edit)
+        df.at[idx, "Valor"] = valor_edit
         df.at[idx, "Pagado"] = pagado_edit
 
-        # Eliminar pagados
         df = df[df["Pagado"] != True]
-
-        # Reordenar y actualizar consecutivos
-        df = df.sort_values(by="Cliente")
+        df = df.sort_values(by="Cliente", ascending=True)
         df = df.reset_index(drop=True)
         df["Consecutivo"] = df.index + 1
 
@@ -200,9 +201,8 @@ if len(df) > 0:
     gran_total = df["Valor"].sum()
     st.subheader(f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**")
 
-
 # ---------------------------------------------------------
-# SECCIÓN 6: DESCARGAR TOTAL POR CLIENTE COMO IMAGEN
+# SECCIÓN 6: IMAGEN DEL TOTAL POR CLIENTE
 # ---------------------------------------------------------
 st.subheader("🖼️ Descargar imagen del total por cliente")
 
@@ -233,9 +233,8 @@ if len(df) > 0:
         mime="image/png"
     )
 
-
 # ---------------------------------------------------------
-# SECCIÓN 7: DESCARGAR EXCEL ACTUALIZADO
+# SECCIÓN 7: DESCARGAR EXCEL
 # ---------------------------------------------------------
 st.subheader("⬇️ Descargar Excel actualizado")
 
