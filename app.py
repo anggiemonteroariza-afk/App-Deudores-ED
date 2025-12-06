@@ -25,13 +25,18 @@ for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
     if col not in df.columns:
         df[col] = None
 
-# Normalizar cliente: mayúsculas + quitar espacios
-df["Cliente"] = df["Cliente"].astype(str).str.strip().str.upper()
+# Normalizar Cliente
+df["Cliente"] = (
+    df["Cliente"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
 
 # Convertir fecha
 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
 
-# Convertir valores
+# Convertir valor
 df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce")
 
 # Normalizar Pagado
@@ -42,22 +47,22 @@ def normalize_paid(x):
 
 df["Pagado"] = df["Pagado"].apply(normalize_paid)
 
-# Eliminar filas vacías
+# Eliminar registros vacíos
 df = df.dropna(how="all")
 
 # Eliminar pagados
 df = df[df["Pagado"] != True]
 
-# Orden alfabético
+# Ordenar alfabéticamente
 df = df.sort_values(by="Cliente", ascending=True, na_position='last')
 
 # Reset consecutivo
 df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
-# Guardar función
-def save():
-    df.to_excel(FILE_PATH, index=False)
+# Función para guardar
+def save(data):
+    data.to_excel(FILE_PATH, index=False)
 
 # ---------------------------------------------------------
 # TÍTULO
@@ -102,7 +107,7 @@ if st.button("Guardar nuevo registro"):
             "Pagado": False
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        save()
+        save(df)
         st.success("Registro guardado exitosamente.")
         st.rerun()
 
@@ -117,74 +122,61 @@ filtro_cliente = st.selectbox(
     ["Todos"] + list(clientes_unicos)
 )
 
-df_display = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cliente]
+df_editable = df if filtro_cliente == "Todos" else df[df["Cliente"] == filtro_cliente]
 
 # ---------------------------------------------------------
-# SECCIÓN 3: DEUDORES ACTIVOS
+# SECCIÓN 3: TABLA EDITABLE
 # ---------------------------------------------------------
-st.subheader("📋 Deudores activos")
+st.subheader("✏️ Editar directamente en la tabla")
 
-df_disp = df_display.copy()
-df_disp["Valor"] = df_disp["Valor"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+# Editable columns
+editable_cols = ["Cliente", "Fecha", "Valor", "Pagado"]
 
-st.dataframe(df_disp, use_container_width=True, hide_index=True)
+df_temp = df_editable.copy()
 
-# ---------------------------------------------------------
-# SECCIÓN 4: EDITAR REGISTRO
-# ---------------------------------------------------------
-st.subheader("✏️ Editar un registro")
+# Convert Fecha para editor
+df_temp["Fecha"] = pd.to_datetime(df_temp["Fecha"])
 
-if len(df) == 0:
-    st.info("No hay registros para editar.")
-else:
-    consecutivos = df["Consecutivo"].tolist()
-    seleccionado = st.selectbox("Selecciona el consecutivo", consecutivos)
+edited = st.data_editor(
+    df_temp,
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "Pagado": st.column_config.CheckboxColumn("Pagado"),
+        "Fecha": st.column_config.DateColumn("Fecha", max_value=date.today()),
+        "Valor": st.column_config.NumberColumn("Valor", min_value=0.0, step=1000.0, format="%.0f")
+    },
+    disabled=["Consecutivo"]
+)
 
-    row = df[df["Consecutivo"] == seleccionado].iloc[0]
-    idx = df[df["Consecutivo"] == seleccionado].index[0]
+# Si hay cambios
+if edited is not None and not edited.equals(df_temp):
+    df_updated = df.copy()
 
-    col1, col2, col3, col4 = st.columns(4)
+    # Actualizar solo los registros filtrados
+    for i, row in edited.iterrows():
+        idx = df[df["Consecutivo"] == row["Consecutivo"]].index
+        if len(idx) > 0:
+            idx = idx[0]
+            df_updated.at[idx, "Cliente"] = row["Cliente"].strip().upper()
+            df_updated.at[idx, "Fecha"] = row["Fecha"].date()
+            df_updated.at[idx, "Valor"] = float(row["Valor"])
+            df_updated.at[idx, "Pagado"] = bool(row["Pagado"])
 
-    with col1:
-        cliente_edit = st.text_input("Cliente", value=row["Cliente"]).strip().upper()
+    # Eliminar pagados
+    df_updated = df_updated[df_updated["Pagado"] != True]
 
-    with col2:
-        fecha_edit = st.date_input(
-            "Fecha",
-            value=row["Fecha"],
-            max_value=date.today(),
-            key=f"fecha_edit_{seleccionado}"
-        )
+    # Orden y consecutivo
+    df_updated = df_updated.sort_values(by="Cliente")
+    df_updated = df_updated.reset_index(drop=True)
+    df_updated["Consecutivo"] = df_updated.index + 1
 
-    with col3:
-        valor_edit = st.number_input(
-            "Valor (COP)",
-            min_value=0.0,
-            value=float(row["Valor"]),
-            format="%.0f",
-            step=1000.0
-        )
-
-    with col4:
-        pagado_edit = st.checkbox("Pagado", value=row["Pagado"])
-
-    if st.button("Guardar cambios"):
-        df.at[idx, "Cliente"] = cliente_edit
-        df.at[idx, "Fecha"] = fecha_edit
-        df.at[idx, "Valor"] = valor_edit
-        df.at[idx, "Pagado"] = pagado_edit
-
-        df = df[df["Pagado"] != True]
-        df = df.sort_values(by="Cliente", ascending=True)
-        df = df.reset_index(drop=True)
-        df["Consecutivo"] = df.index + 1
-
-        save()
-        st.success("Cambios guardados correctamente.")
-        st.rerun()
+    save(df_updated)
+    st.success("Cambios guardados.")
+    st.rerun()
 
 # ---------------------------------------------------------
-# SECCIÓN 5: TOTAL POR CLIENTE
+# SECCIÓN 4: TOTAL POR CLIENTE
 # ---------------------------------------------------------
 st.subheader("📊 Total por cliente")
 
@@ -193,7 +185,6 @@ if len(df) == 0:
 else:
     totales = df.groupby("Cliente")["Valor"].sum().reset_index()
     totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
-
     st.dataframe(totales, use_container_width=True)
 
 # Gran total
@@ -202,7 +193,7 @@ if len(df) > 0:
     st.subheader(f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**")
 
 # ---------------------------------------------------------
-# SECCIÓN 6: IMAGEN DEL TOTAL POR CLIENTE
+# SECCIÓN 5: IMAGEN DEL TOTAL POR CLIENTE
 # ---------------------------------------------------------
 st.subheader("🖼️ Descargar imagen del total por cliente")
 
@@ -234,7 +225,7 @@ if len(df) > 0:
     )
 
 # ---------------------------------------------------------
-# SECCIÓN 7: DESCARGAR EXCEL
+# SECCIÓN 6: DESCARGA EXCEL
 # ---------------------------------------------------------
 st.subheader("⬇️ Descargar Excel actualizado")
 
