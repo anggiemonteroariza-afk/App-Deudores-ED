@@ -4,6 +4,8 @@ import os
 from datetime import date
 import matplotlib.pyplot as plt
 import io
+import base64
+import requests
 
 # ---------------------------------------------------------
 # CONFIGURACIÓN GENERAL
@@ -11,6 +13,47 @@ import io
 st.set_page_config(page_title="Mini App Deudores", page_icon="💸", layout="wide")
 
 FILE_PATH = "DeudoresPrueba.xlsx"
+
+# ---------------------------------------------------------
+#*** CONFIGURACIÓN DE GITHUB PARA SINCRONIZAR AUTOMÁTICAMENTE ***
+# ---------------------------------------------------------
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")  # ✔ Token guardado en Streamlit Cloud
+GITHUB_REPO = "anggiemontero/App-Deudores-ED"  # ✔ Tu repo
+GITHUB_FILE_PATH = "DeudoresPrueba.xlsx"       # ✔ Nombre del archivo dentro del repo
+
+def upload_to_github(local_file_path, repo_file_path):
+    """Sube el Excel actualizado a GitHub automáticamente."""
+    if not GITHUB_TOKEN:
+        st.error("Falta el token de GitHub. Agrégalo en Streamlit → Settings → Secrets.")
+        return
+    
+    with open(local_file_path, "rb") as f:
+        content = f.read()
+    encoded = base64.b64encode(content).decode()
+
+    # Verificar si el archivo existe en GitHub
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{repo_file_path}"
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+    r = requests.get(url, headers=headers)
+
+    if r.status_code == 200:
+        sha = r.json()["sha"]
+    else:
+        sha = None
+
+    data = {
+        "message": "Actualización automática desde Streamlit",
+        "content": encoded,
+        "sha": sha
+    }
+
+    result = requests.put(url, headers=headers, json=data)
+
+    if result.status_code in [200, 201]:
+        st.success("📤 Archivo sincronizado automáticamente con GitHub")
+    else:
+        st.error(f"Error al subir archivo a GitHub: {result.text}")
+
 
 # ---------------------------------------------------------
 # CARGA Y LIMPIEZA DEL ARCHIVO
@@ -63,6 +106,8 @@ df["Consecutivo"] = df.index + 1
 # Guardar
 def save(data):
     data.to_excel(FILE_PATH, index=False)
+    upload_to_github(FILE_PATH, GITHUB_FILE_PATH)  # ✔ Sincroniza automáticamente
+
 
 # ---------------------------------------------------------
 # TÍTULO
@@ -148,7 +193,6 @@ edited = st.data_editor(
 if st.button("💾 Guardar cambios de la tabla"):
     df_updated = df.copy()
 
-    # Actualizar solo registros visibles
     for _, row in edited.iterrows():
         idx = df[df["Consecutivo"] == row["Consecutivo"]].index
         if len(idx) > 0:
@@ -158,10 +202,7 @@ if st.button("💾 Guardar cambios de la tabla"):
             df_updated.at[idx, "Valor"] = float(row["Valor"])
             df_updated.at[idx, "Pagado"] = bool(row["Pagado"])
 
-    # Eliminar pagados
     df_updated = df_updated[df_updated["Pagado"] != True]
-
-    # Reordenar
     df_updated = df_updated.sort_values(by="Cliente")
     df_updated = df_updated.reset_index(drop=True)
     df_updated["Consecutivo"] = df_updated.index + 1
