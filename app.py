@@ -58,9 +58,13 @@ def upload_to_github(local_file_path, repo_file_path):
 # ---------------------------------------------------------
 # CARGA Y LIMPIEZA DEL ARCHIVO
 # ---------------------------------------------------------
-if os.path.exists(FILE_PATH):
-    df = pd.read_excel(FILE_PATH)
-else:
+try:
+    if os.path.exists(FILE_PATH):
+        df = pd.read_excel(FILE_PATH)
+    else:
+        raise FileNotFoundError
+except Exception:
+    st.warning("⚠️ El archivo de datos no pudo leerse. Se creó uno nuevo.")
     df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
 
 # Asegurar columnas
@@ -275,3 +279,4 @@ with open("DeudoresPrueba.xlsx", "rb") as f:
         file_name="DeudoresPrueba.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
