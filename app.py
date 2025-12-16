@@ -8,30 +8,35 @@ import io
 # ---------------------------------------------------------
 # CONFIGURACIÓN GENERAL
 # ---------------------------------------------------------
-st.set_page_config(
-    page_title="Mini App Deudores",
-    page_icon="💸",
-    layout="wide"
-)
+st.set_page_config(page_title="Mini App Deudores", page_icon="💸", layout="wide")
 
 FILE_PATH = "DeudoresPrueba.xlsx"
 
 # ---------------------------------------------------------
-# CARGA DEL ARCHIVO
+# CARGA SEGURA DEL ARCHIVO (ANTI-CORRUPCIÓN)
 # ---------------------------------------------------------
-if os.path.exists(FILE_PATH):
-    df = pd.read_excel(FILE_PATH)
-else:
-    df = pd.DataFrame(
-        columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]
-    )
+def load_data():
+    try:
+        return pd.read_excel(FILE_PATH)
+    except Exception:
+        # Respaldar archivo dañado si existe
+        if os.path.exists(FILE_PATH):
+            os.rename(FILE_PATH, "DeudoresPrueba_CORRUPTO.xlsx")
 
-# Asegurar columnas
+        # Crear DataFrame limpio
+        return pd.DataFrame(
+            columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]
+        )
+
+df = load_data()
+
+# ---------------------------------------------------------
+# NORMALIZACIÓN DE DATOS
+# ---------------------------------------------------------
 for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
     if col not in df.columns:
         df[col] = None
 
-# Normalizar cliente
 df["Cliente"] = (
     df["Cliente"]
     .astype(str)
@@ -39,29 +44,20 @@ df["Cliente"] = (
     .str.upper()
 )
 
-# Fecha
 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
+df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce")
 
-# Valor
-df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
+def normalize_paid(x):
+    return str(x).upper() in ["1", "TRUE", "PAGADO", "SI", "SÍ", "YES"]
 
-# Pagado
-df["Pagado"] = df["Pagado"].astype(bool)
+df["Pagado"] = df["Pagado"].apply(normalize_paid)
 
-# Eliminar vacíos
 df = df.dropna(how="all")
-
-# Eliminar pagados
 df = df[df["Pagado"] != True]
-
-# Ordenar
 df = df.sort_values(by="Cliente")
-
-# Reset consecutivo
 df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
-# Guardar
 def save(data):
     data.to_excel(FILE_PATH, index=False)
 
@@ -98,43 +94,42 @@ with c3:
 
 if st.button("Guardar nuevo registro"):
     if cliente == "":
-        st.error("El nombre del cliente es obligatorio.")
+        st.error("El cliente es obligatorio")
     else:
-        nuevo = {
-            "Consecutivo": len(df) + 1,
-            "Cliente": cliente,
-            "Fecha": fecha,
-            "Valor": valor,
-            "Pagado": False
-        }
-        df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
+        df = pd.concat(
+            [df, pd.DataFrame([{
+                "Consecutivo": len(df) + 1,
+                "Cliente": cliente,
+                "Fecha": fecha,
+                "Valor": valor,
+                "Pagado": False
+            }])],
+            ignore_index=True
+        )
         save(df)
-        st.success("Registro guardado correctamente.")
+        st.success("Registro guardado")
         st.rerun()
 
 # ---------------------------------------------------------
-# FILTRO CLIENTE
+# FILTRO
 # ---------------------------------------------------------
 st.subheader("🔎 Filtro por cliente")
 
 clientes = sorted(df["Cliente"].unique())
-filtro = st.selectbox(
-    "Selecciona un cliente (opcional)",
-    ["Todos"] + clientes
-)
+filtro = st.selectbox("Cliente", ["Todos"] + clientes)
 
 df_view = df if filtro == "Todos" else df[df["Cliente"] == filtro]
 
 # ---------------------------------------------------------
 # TABLA EDITABLE
 # ---------------------------------------------------------
-st.subheader("✏️ Editar y marcar pagos en la tabla")
+st.subheader("✏️ Editar / Marcar como pagado")
 
-df_edit = df_view.copy()
-df_edit["Fecha"] = pd.to_datetime(df_edit["Fecha"])
+df_temp = df_view.copy()
+df_temp["Fecha"] = pd.to_datetime(df_temp["Fecha"])
 
 edited = st.data_editor(
-    df_edit,
+    df_temp,
     use_container_width=True,
     hide_index=True,
     column_config={
@@ -143,26 +138,17 @@ edited = st.data_editor(
             "Fecha", max_value=date.today()
         ),
         "Valor": st.column_config.NumberColumn(
-            "Valor",
-            min_value=0,
-            step=1000,
-            format="$%,.0f"
+            "Valor (COP)", min_value=0.0, step=1000.0, format="%.0f"
         )
     },
     disabled=["Consecutivo"]
 )
 
-# ---------------------------------------------------------
-# GUARDAR CAMBIOS
-# ---------------------------------------------------------
-if st.button("💾 Guardar cambios de la tabla"):
+if st.button("💾 Guardar cambios"):
     df_updated = df.copy()
 
     for _, row in edited.iterrows():
-        idx = df_updated[
-            df_updated["Consecutivo"] == row["Consecutivo"]
-        ].index
-
+        idx = df_updated[df_updated["Consecutivo"] == row["Consecutivo"]].index
         if len(idx) > 0:
             i = idx[0]
             df_updated.at[i, "Cliente"] = row["Cliente"].strip().upper()
@@ -170,16 +156,13 @@ if st.button("💾 Guardar cambios de la tabla"):
             df_updated.at[i, "Valor"] = float(row["Valor"])
             df_updated.at[i, "Pagado"] = bool(row["Pagado"])
 
-    # Eliminar pagados
     df_updated = df_updated[df_updated["Pagado"] != True]
-
-    # Reordenar
     df_updated = df_updated.sort_values(by="Cliente")
     df_updated = df_updated.reset_index(drop=True)
     df_updated["Consecutivo"] = df_updated.index + 1
 
     save(df_updated)
-    st.success("Cambios guardados correctamente.")
+    st.success("Cambios guardados correctamente")
     st.rerun()
 
 # ---------------------------------------------------------
@@ -187,27 +170,20 @@ if st.button("💾 Guardar cambios de la tabla"):
 # ---------------------------------------------------------
 st.subheader("📊 Total por cliente")
 
-if len(df) == 0:
-    st.info("No hay deudores activos.")
-else:
-    totales = (
-        df.groupby("Cliente", as_index=False)["Valor"]
-        .sum()
-    )
-    totales["Valor"] = totales["Valor"].apply(
-        lambda x: f"${x:,.0f}"
-    )
+if len(df) > 0:
+    totales = df.groupby("Cliente", as_index=False)["Valor"].sum()
+    totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
     st.dataframe(totales, use_container_width=True)
 
     gran_total = df["Valor"].sum()
-    st.subheader(
-        f"💰 Gran total de todos los deudores: **${gran_total:,.0f}**"
-    )
+    st.subheader(f"💰 Gran total: **${gran_total:,.0f}**")
+else:
+    st.info("No hay deudores activos")
 
 # ---------------------------------------------------------
 # IMAGEN
 # ---------------------------------------------------------
-st.subheader("🖼️ Descargar imagen del total por cliente")
+st.subheader("🖼️ Descargar imagen")
 
 if len(df) > 0:
     fig, ax = plt.subplots(figsize=(6, len(totales) * 0.5 + 1))
@@ -216,36 +192,38 @@ if len(df) > 0:
     tabla = ax.table(
         cellText=totales.values,
         colLabels=totales.columns,
-        cellLoc="center",
-        loc="center"
+        loc="center",
+        cellLoc="center"
     )
 
     tabla.auto_set_font_size(False)
     tabla.set_fontsize(10)
     tabla.scale(1, 1.5)
 
-    buffer_img = io.BytesIO()
-    plt.savefig(buffer_img, format="png", bbox_inches="tight", dpi=300)
-    buffer_img.seek(0)
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+    buf.seek(0)
 
-    st.image(buffer_img, caption="Total por cliente")
-
+    st.image(buf)
     st.download_button(
-        "⬇️ Descargar imagen (PNG)",
-        buffer_img,
-        file_name="Total_por_cliente.png",
-        mime="image/png"
+        "⬇️ Descargar imagen",
+        buf,
+        "Total_por_cliente.png",
+        "image/png"
     )
 
 # ---------------------------------------------------------
-# DESCARGAR EXCEL
+# DESCARGA EXCEL
 # ---------------------------------------------------------
-st.subheader("⬇️ Descargar Excel actualizado")
+st.subheader("⬇️ Descargar Excel")
 
-with open(FILE_PATH, "rb") as f:
-    st.download_button(
-        "Descargar archivo",
-        f,
-        file_name="DeudoresPrueba.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+buffer = io.BytesIO()
+df.to_excel(buffer, index=False)
+buffer.seek(0)
+
+st.download_button(
+    "Descargar archivo",
+    buffer,
+    "DeudoresPrueba.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
