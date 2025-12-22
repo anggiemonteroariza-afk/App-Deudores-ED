@@ -4,75 +4,61 @@ import os
 from datetime import date
 import matplotlib.pyplot as plt
 import io
-from git import Repo
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN
+# CONFIGURACIÓN GENERAL
 # ---------------------------------------------------------
-st.set_page_config(page_title="Mini App Deudores", page_icon="💸", layout="wide")
+st.set_page_config(
+    page_title="Mini App Deudores",
+    page_icon="💸",
+    layout="wide"
+)
 
 FILE_PATH = "DeudoresPrueba.xlsx"
-REPO_URL = st.secrets["REPO_URL"]
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 
 # ---------------------------------------------------------
-# CLONAR REPO SI NO EXISTE
+# CARGA DE DATOS
 # ---------------------------------------------------------
-if not os.path.exists(".git"):
-    Repo.clone_from(
-        REPO_URL.replace("https://", f"https://{GITHUB_TOKEN}@"),
-        "."
-    )
-
-repo = Repo(".")
-
-# ---------------------------------------------------------
-# CARGA SEGURA DEL ARCHIVO
-# ---------------------------------------------------------
-def load_data():
+if os.path.exists(FILE_PATH):
     try:
-        return pd.read_excel(FILE_PATH)
+        df = pd.read_excel(FILE_PATH)
     except Exception:
-        return pd.DataFrame(
-            columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]
-        )
+        df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
+else:
+    df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
 
-df = load_data()
+# Asegurar columnas
+for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
+    if col not in df.columns:
+        df[col] = None
 
-# Normalización
-df["Cliente"] = df.get("Cliente", "").astype(str).str.strip().str.upper()
-df["Fecha"] = pd.to_datetime(df.get("Fecha"), errors="coerce").dt.date
-df["Valor"] = pd.to_numeric(df.get("Valor"), errors="coerce").fillna(0)
+# Limpieza básica
+df["Cliente"] = df["Cliente"].astype(str).str.strip().str.upper()
+df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
+df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
 
-def normalize_paid(x):
-    return str(x).upper() in ["1", "TRUE", "PAGADO", "SI", "SÍ", "YES"]
+df["Pagado"] = df["Pagado"].astype(bool)
 
-df["Pagado"] = df.get("Pagado", False).apply(normalize_paid)
-
-# Eliminar vacíos y pagados
+# Eliminar filas completamente vacías
 df = df.dropna(how="all")
+
+# Eliminar pagados
 df = df[df["Pagado"] != True]
 
-# Ordenar y consecutivo
-df = df.sort_values(by="Cliente").reset_index(drop=True)
+# Ordenar
+df = df.sort_values(by="Cliente")
+
+# Reindexar consecutivo
+df = df.reset_index(drop=True)
 df["Consecutivo"] = df.index + 1
 
 # ---------------------------------------------------------
-# GUARDAR + PUSH A GITHUB
-# ---------------------------------------------------------
-def save_and_push(data):
-    data.to_excel(FILE_PATH, index=False)
-    repo.git.add(FILE_PATH)
-    repo.index.commit("Actualización de deudores")
-    repo.remote().push()
-
-# ---------------------------------------------------------
-# UI
+# TÍTULO
 # ---------------------------------------------------------
 st.title("💸 App de Registro de Deudores")
 
 # ---------------------------------------------------------
-# NUEVO REGISTRO
+# REGISTRAR NUEVO DEUDOR
 # ---------------------------------------------------------
 st.subheader("➕ Registrar nuevo deudor")
 
@@ -80,37 +66,46 @@ c1, c2, c3 = st.columns(3)
 
 with c1:
     cliente = st.text_input("Cliente").strip().upper()
+
 with c2:
-    fecha = st.date_input("Fecha", value=date.today(), max_value=date.today())
+    fecha = st.date_input(
+        "Fecha",
+        value=date.today(),
+        max_value=date.today(),
+        key="fecha_nuevo"
+    )
+
 with c3:
     valor = st.number_input(
         "Valor (COP)",
-        min_value=0,
-        step=1000,
-        format="%d"
+        min_value=0.0,
+        step=1000.0,
+        format="%.0f"
     )
 
 if st.button("Guardar nuevo registro"):
     if cliente == "":
-        st.error("El cliente es obligatorio")
+        st.error("El cliente es obligatorio.")
     else:
-        df.loc[len(df)] = [
-            len(df) + 1,
-            cliente,
-            fecha,
-            valor,
-            False
-        ]
-        save_and_push(df)
-        st.success("Registro guardado")
+        nuevo = {
+            "Consecutivo": len(df) + 1,
+            "Cliente": cliente,
+            "Fecha": fecha,
+            "Valor": valor,
+            "Pagado": False
+        }
+        df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
+        df.to_excel(FILE_PATH, index=False)
+        st.success("Registro guardado.")
         st.rerun()
 
 # ---------------------------------------------------------
 # FILTRO
 # ---------------------------------------------------------
 st.subheader("🔎 Filtro por cliente")
-clientes = ["Todos"] + sorted(df["Cliente"].unique().tolist())
-filtro = st.selectbox("Cliente", clientes)
+
+clientes = sorted(df["Cliente"].unique())
+filtro = st.selectbox("Cliente", ["Todos"] + clientes)
 
 df_view = df if filtro == "Todos" else df[df["Cliente"] == filtro]
 
@@ -119,39 +114,48 @@ df_view = df if filtro == "Todos" else df[df["Cliente"] == filtro]
 # ---------------------------------------------------------
 st.subheader("✏️ Editar / Marcar como pagado")
 
+df_edit = df_view.copy()
+df_edit["Fecha"] = pd.to_datetime(df_edit["Fecha"])
+
 edited = st.data_editor(
-    df_view,
+    df_edit,
     use_container_width=True,
     hide_index=True,
+    disabled=["Consecutivo"],
     column_config={
-        "Pagado": st.column_config.CheckboxColumn("Pagado"),
-        "Fecha": st.column_config.DateColumn("Fecha", max_value=date.today()),
+        "Fecha": st.column_config.DateColumn(
+            "Fecha",
+            max_value=date.today()
+        ),
         "Valor": st.column_config.NumberColumn(
-            "Valor",
+            "Valor (COP)",
             min_value=0,
             step=1000,
-            format="%d"
-        )
-    },
-    disabled=["Consecutivo"]
+            format="%.0f"
+        ),
+        "Pagado": st.column_config.CheckboxColumn("Pagado")
+    }
 )
 
 if st.button("💾 Guardar cambios"):
+    df_new = df.copy()
+
     for _, row in edited.iterrows():
-        idx = df[df["Consecutivo"] == row["Consecutivo"]].index
-        if len(idx):
+        idx = df_new[df_new["Consecutivo"] == row["Consecutivo"]].index
+        if len(idx) > 0:
             i = idx[0]
-            df.at[i, "Cliente"] = row["Cliente"].strip().upper()
-            df.at[i, "Fecha"] = row["Fecha"]
-            df.at[i, "Valor"] = int(row["Valor"])
-            df.at[i, "Pagado"] = bool(row["Pagado"])
+            df_new.at[i, "Cliente"] = row["Cliente"].strip().upper()
+            df_new.at[i, "Fecha"] = row["Fecha"].date()
+            df_new.at[i, "Valor"] = float(row["Valor"])
+            df_new.at[i, "Pagado"] = bool(row["Pagado"])
 
-    df = df[df["Pagado"] != True]
-    df = df.sort_values(by="Cliente").reset_index(drop=True)
-    df["Consecutivo"] = df.index + 1
+    df_new = df_new[df_new["Pagado"] != True]
+    df_new = df_new.sort_values(by="Cliente")
+    df_new = df_new.reset_index(drop=True)
+    df_new["Consecutivo"] = df_new.index + 1
 
-    save_and_push(df)
-    st.success("Cambios guardados")
+    df_new.to_excel(FILE_PATH, index=False)
+    st.success("Cambios guardados correctamente.")
     st.rerun()
 
 # ---------------------------------------------------------
@@ -159,31 +163,56 @@ if st.button("💾 Guardar cambios"):
 # ---------------------------------------------------------
 st.subheader("📊 Total por cliente")
 
-totales = df.groupby("Cliente")["Valor"].sum().reset_index()
-totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
+if len(df) > 0:
+    totales = df.groupby("Cliente")["Valor"].sum().reset_index()
+    totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
+    st.dataframe(totales, use_container_width=True)
 
-st.dataframe(totales, use_container_width=True)
-
-gran_total = df["Valor"].sum()
-st.subheader(f"💰 Gran total: **${gran_total:,.0f}**")
+    gran_total = df["Valor"].sum()
+    st.subheader(f"💰 Gran total: **${gran_total:,.0f}**")
+else:
+    st.info("No hay deudores activos.")
 
 # ---------------------------------------------------------
 # IMAGEN
 # ---------------------------------------------------------
-st.subheader("🖼️ Descargar imagen")
+st.subheader("🖼️ Descargar imagen del total por cliente")
 
-fig, ax = plt.subplots(figsize=(6, len(totales) * 0.5 + 1))
-ax.axis("off")
-ax.table(
-    cellText=totales.values,
-    colLabels=totales.columns,
-    cellLoc="center",
-    loc="center"
+if len(df) > 0:
+    fig, ax = plt.subplots(figsize=(6, len(totales) * 0.5 + 1))
+    ax.axis("off")
+
+    ax.table(
+        cellText=totales.values,
+        colLabels=totales.columns,
+        cellLoc="center",
+        loc="center"
+    )
+
+    buffer_img = io.BytesIO()
+    plt.savefig(buffer_img, format="png", bbox_inches="tight", dpi=300)
+    buffer_img.seek(0)
+
+    st.image(buffer_img)
+    st.download_button(
+        "⬇️ Descargar imagen",
+        data=buffer_img,
+        file_name="Total_por_cliente.png",
+        mime="image/png"
+    )
+
+# ---------------------------------------------------------
+# DESCARGAR EXCEL
+# ---------------------------------------------------------
+st.subheader("⬇️ Descargar Excel actualizado")
+
+output = io.BytesIO()
+df.to_excel(output, index=False)
+output.seek(0)
+
+st.download_button(
+    "Descargar Excel",
+    data=output,
+    file_name="DeudoresPrueba.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
-buf = io.BytesIO()
-plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
-buf.seek(0)
-
-st.image(buf)
-st.download_button("Descargar PNG", buf, "total_por_cliente.png", "image/png")
