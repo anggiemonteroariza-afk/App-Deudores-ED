@@ -4,9 +4,11 @@ import os
 from datetime import date
 import matplotlib.pyplot as plt
 import io
+from supabase import create_client
+from dotenv import load_dotenv
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN GENERAL
+# CONFIGURACIÓN
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Mini App Deudores",
@@ -14,43 +16,38 @@ st.set_page_config(
     layout="wide"
 )
 
-FILE_PATH = "DeudoresPrueba.xlsx"
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+TABLE_NAME = "deudores"
 
 # ---------------------------------------------------------
-# CARGA DE DATOS
+# CARGAR DATOS DESDE SUPABASE
 # ---------------------------------------------------------
-if os.path.exists(FILE_PATH):
-    try:
-        df = pd.read_excel(FILE_PATH)
-    except Exception:
-        df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
-else:
-    df = pd.DataFrame(columns=["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"])
+@st.cache_data(ttl=5)
+def cargar_datos():
+    response = supabase.table(TABLE_NAME).select("*").execute()
+    data = response.data
+    if data:
+        df = pd.DataFrame(data)
+    else:
+        df = pd.DataFrame(columns=["id", "cliente", "fecha", "valor", "pagado"])
+    return df
 
-# Asegurar columnas
-for col in ["Consecutivo", "Cliente", "Fecha", "Valor", "Pagado"]:
-    if col not in df.columns:
-        df[col] = None
+df = cargar_datos()
 
-# Limpieza básica
-df["Cliente"] = df["Cliente"].astype(str).str.strip().str.upper()
-df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
-df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
+if not df.empty:
+    df["cliente"] = df["cliente"].astype(str).str.strip().str.upper()
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
+    df["pagado"] = df["pagado"].astype(bool)
 
-df["Pagado"] = df["Pagado"].astype(bool)
-
-# Eliminar filas completamente vacías
-df = df.dropna(how="all")
-
-# Eliminar pagados
-df = df[df["Pagado"] != True]
-
-# Ordenar
-df = df.sort_values(by="Cliente")
-
-# Reindexar consecutivo
-df = df.reset_index(drop=True)
-df["Consecutivo"] = df.index + 1
+    df = df[df["pagado"] != True]
+    df = df.sort_values(by="cliente").reset_index(drop=True)
 
 # ---------------------------------------------------------
 # TÍTULO
@@ -71,8 +68,7 @@ with c2:
     fecha = st.date_input(
         "Fecha",
         value=date.today(),
-        max_value=date.today(),
-        key="fecha_nuevo"
+        max_value=date.today()
     )
 
 with c3:
@@ -87,16 +83,15 @@ if st.button("Guardar nuevo registro"):
     if cliente == "":
         st.error("El cliente es obligatorio.")
     else:
-        nuevo = {
-            "Consecutivo": len(df) + 1,
-            "Cliente": cliente,
-            "Fecha": fecha,
-            "Valor": valor,
-            "Pagado": False
-        }
-        df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
-        df.to_excel(FILE_PATH, index=False)
+        supabase.table(TABLE_NAME).insert({
+            "cliente": cliente,
+            "fecha": str(fecha),
+            "valor": valor,
+            "pagado": False
+        }).execute()
+
         st.success("Registro guardado.")
+        st.cache_data.clear()
         st.rerun()
 
 # ---------------------------------------------------------
@@ -104,72 +99,72 @@ if st.button("Guardar nuevo registro"):
 # ---------------------------------------------------------
 st.subheader("🔎 Filtro por cliente")
 
-clientes = sorted(df["Cliente"].unique())
+if not df.empty:
+    clientes = sorted(df["cliente"].unique())
+else:
+    clientes = []
+
 filtro = st.selectbox("Cliente", ["Todos"] + clientes)
 
-df_view = df if filtro == "Todos" else df[df["Cliente"] == filtro]
+df_view = df if filtro == "Todos" else df[df["cliente"] == filtro]
 
 # ---------------------------------------------------------
 # TABLA EDITABLE
 # ---------------------------------------------------------
 st.subheader("✏️ Editar / Marcar como pagado")
 
-df_edit = df_view.copy()
-df_edit["Fecha"] = pd.to_datetime(df_edit["Fecha"])
+if not df_view.empty:
 
-edited = st.data_editor(
-    df_edit,
-    use_container_width=True,
-    hide_index=True,
-    disabled=["Consecutivo"],
-    column_config={
-        "Fecha": st.column_config.DateColumn(
-            "Fecha",
-            max_value=date.today()
-        ),
-        "Valor": st.column_config.NumberColumn(
-            "Valor (COP)",
-            min_value=0,
-            step=1000,
-            format="%.0f"
-        ),
-        "Pagado": st.column_config.CheckboxColumn("Pagado")
-    }
-)
+    df_edit = df_view.copy()
 
-if st.button("💾 Guardar cambios"):
-    df_new = df.copy()
+    edited = st.data_editor(
+        df_edit,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["id"],
+        column_config={
+            "fecha": st.column_config.DateColumn(
+                "Fecha",
+                max_value=date.today()
+            ),
+            "valor": st.column_config.NumberColumn(
+                "Valor (COP)",
+                min_value=0,
+                step=1000,
+                format="%.0f"
+            ),
+            "pagado": st.column_config.CheckboxColumn("Pagado")
+        }
+    )
 
-    for _, row in edited.iterrows():
-        idx = df_new[df_new["Consecutivo"] == row["Consecutivo"]].index
-        if len(idx) > 0:
-            i = idx[0]
-            df_new.at[i, "Cliente"] = row["Cliente"].strip().upper()
-            df_new.at[i, "Fecha"] = row["Fecha"].date()
-            df_new.at[i, "Valor"] = float(row["Valor"])
-            df_new.at[i, "Pagado"] = bool(row["Pagado"])
+    if st.button("💾 Guardar cambios"):
 
-    df_new = df_new[df_new["Pagado"] != True]
-    df_new = df_new.sort_values(by="Cliente")
-    df_new = df_new.reset_index(drop=True)
-    df_new["Consecutivo"] = df_new.index + 1
+        for _, row in edited.iterrows():
+            supabase.table(TABLE_NAME).update({
+                "cliente": row["cliente"].strip().upper(),
+                "fecha": str(row["fecha"].date()),
+                "valor": float(row["valor"]),
+                "pagado": bool(row["pagado"])
+            }).eq("id", row["id"]).execute()
 
-    df_new.to_excel(FILE_PATH, index=False)
-    st.success("Cambios guardados correctamente.")
-    st.rerun()
+        st.success("Cambios guardados correctamente.")
+        st.cache_data.clear()
+        st.rerun()
 
 # ---------------------------------------------------------
 # TOTALES
 # ---------------------------------------------------------
 st.subheader("📊 Total por cliente")
 
-if len(df) > 0:
-    totales = df.groupby("Cliente")["Valor"].sum().reset_index()
-    totales["Valor"] = totales["Valor"].apply(lambda x: f"${x:,.0f}")
+if not df.empty:
+
+    totales = df.groupby("cliente")["valor"].sum().reset_index()
+
     st.dataframe(totales, use_container_width=True)
 
-    gran_total = df["Valor"].sum()
+    gran_total = df["valor"].sum()
     st.subheader(f"💰 Gran total: **${gran_total:,.0f}**")
+
 else:
     st.info("No hay deudores activos.")
 
@@ -178,7 +173,8 @@ else:
 # ---------------------------------------------------------
 st.subheader("🖼️ Descargar imagen del total por cliente")
 
-if len(df) > 0:
+if not df.empty:
+
     fig, ax = plt.subplots(figsize=(6, len(totales) * 0.5 + 1))
     ax.axis("off")
 
@@ -206,13 +202,15 @@ if len(df) > 0:
 # ---------------------------------------------------------
 st.subheader("⬇️ Descargar Excel actualizado")
 
-output = io.BytesIO()
-df.to_excel(output, index=False)
-output.seek(0)
+if not df.empty:
 
-st.download_button(
-    "Descargar Excel",
-    data=output,
-    file_name="DeudoresPrueba.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    st.download_button(
+        "Descargar Excel",
+        data=output,
+        file_name="Deudores.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
