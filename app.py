@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import date
 import matplotlib.pyplot as plt
 import io
 from supabase import create_client
-from dotenv import load_dotenv
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN
+# CONFIGURACIÓN GENERAL
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Mini App Deudores",
@@ -16,13 +14,13 @@ st.set_page_config(
     layout="wide"
 )
 
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# ---------------------------------------------------------
+# CONEXIÓN A SUPABASE (STREAMLIT CLOUD)
+# ---------------------------------------------------------
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 TABLE_NAME = "deudores"
 
 # ---------------------------------------------------------
